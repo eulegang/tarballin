@@ -5,37 +5,27 @@ use lsp_types::{
     notification::Notification, SaveOptions, ServerCapabilities, TextDocumentSyncCapability,
     TextDocumentSyncOptions,
 };
-use tracing::{debug, info, info_span};
-use tracing_subscriber::util::SubscriberInitExt;
+use tracing::{info, info_span};
 
 mod cli;
 mod coverage;
 
 fn main() {
     let args = cli::Args::parse();
-
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .pretty()
-        .with_ansi(false)
-        .finish()
-        .init();
+    args.setup_subscriber();
 
     let span = info_span!("main");
     let _guard = span.enter();
 
     let (conn, threads) = match args.connect {
         cli::Conn::Stdio => {
-            debug!("planning on connecting over stdio");
+            info!("planning on connecting over stdio");
 
             Connection::stdio()
         }
     };
 
     let (id, _) = conn.initialize_start().unwrap();
-
-    //let init_params: InitializeParams = serde_json::from_value(params).unwrap();
-    //let client_capabilities: ClientCapabilities = init_params.capabilities;
 
     let server_capabilities = ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Options(
