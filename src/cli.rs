@@ -38,7 +38,12 @@ impl Args {
                     .init();
             }
             (Some(path), None) => {
-                let file = File::options().write(true).create(true).open(path).unwrap();
+                let file = File::options()
+                    .write(true)
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .unwrap();
 
                 tracing_subscriber::fmt()
                     .with_writer(file)
@@ -48,7 +53,12 @@ impl Args {
                     .init();
             }
             (Some(path), Some(level)) => {
-                let file = File::options().write(true).create(true).open(path).unwrap();
+                let file = File::options()
+                    .write(true)
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .unwrap();
 
                 tracing_subscriber::fmt()
                     .with_writer(file)

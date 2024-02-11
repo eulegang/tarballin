@@ -224,6 +224,7 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
