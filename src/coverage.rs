@@ -13,6 +13,8 @@ use lsp_types::{
 use serde::Deserialize;
 use tracing::{debug, error, info_span, trace};
 
+use crate::Error;
+
 #[derive(Deserialize)]
 pub struct Coverage {
     pub traces: HashMap<String, Vec<Trace>>,
@@ -33,25 +35,19 @@ pub struct Stats {
     pub line: usize,
 }
 
+impl Coverage {
+    pub fn load(package: &str) -> Result<Self, Error> {
+        let file = File::open(format!("./target/tarpaulin/{package}-coverage.json"))?;
+        let coverage = serde_json::from_reader(file)?;
+
+        Ok(coverage)
+    }
+}
+
 pub struct Worker {
     handle: std::thread::JoinHandle<()>,
     tx: Sender<()>,
     report: Sender<Message>,
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("{0}")]
-    IO(#[from] std::io::Error),
-
-    #[error("failed to run tarpaulin")]
-    Failure,
-
-    #[error("{0}")]
-    Serde(#[from] serde_json::Error),
-
-    #[error("{0}")]
-    Parse(#[from] url::ParseError),
 }
 
 impl Worker {
@@ -176,7 +172,7 @@ struct LineSlice {
 }
 
 impl LineSlice {
-    fn build(slice: &[u8]) -> Vec<LineSlice> {
+    pub fn build(slice: &[u8]) -> Vec<LineSlice> {
         let mut start = 0;
         let mut begin = 0;
         let mut end = 0;

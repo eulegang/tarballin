@@ -2,13 +2,32 @@ use clap::Parser;
 use coverage::Worker;
 use lsp_server::Connection;
 use lsp_types::{
-    notification::Notification, SaveOptions, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncOptions,
+    notification::Notification, InitializeParams, SaveOptions, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncOptions,
 };
 use tracing::{info, info_span};
 
 mod cli;
 mod coverage;
+mod line_slice;
+mod mode;
+mod runner;
+mod workers;
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("{0}")]
+    IO(#[from] std::io::Error),
+
+    #[error("failed to run tarpaulin")]
+    Failure,
+
+    #[error("{0}")]
+    Serde(#[from] serde_json::Error),
+
+    #[error("{0}")]
+    Parse(#[from] url::ParseError),
+}
 
 fn main() {
     let args = cli::Args::parse();
@@ -25,7 +44,9 @@ fn main() {
         }
     };
 
-    let (id, _) = conn.initialize_start().unwrap();
+    let (id, params) = conn.initialize_start().unwrap();
+
+    let init: InitializeParams = serde_json::from_value(params).unwrap();
 
     let server_capabilities = ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Options(
