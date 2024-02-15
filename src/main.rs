@@ -1,10 +1,6 @@
 use clap::Parser;
-use coverage::Worker;
 use lsp_server::Connection;
-use lsp_types::{
-    notification::Notification, InitializeParams, SaveOptions, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncOptions,
-};
+use lsp_types::{notification::Notification, InitializeParams};
 use tracing::{info, info_span};
 
 mod cli;
@@ -48,26 +44,10 @@ fn main() {
 
     let init: InitializeParams = serde_json::from_value(params).unwrap();
 
-    let server_capabilities = ServerCapabilities {
-        text_document_sync: Some(TextDocumentSyncCapability::Options(
-            TextDocumentSyncOptions {
-                open_close: None,
-                change: None,
-                will_save: None,
-                will_save_wait_until: None,
-                save: Some(lsp_types::TextDocumentSyncSaveOptions::SaveOptions(
-                    SaveOptions {
-                        include_text: Some(false),
-                    },
-                )),
-            },
-        )),
-
-        ..ServerCapabilities::default()
-    };
-
+    let mode = mode::Mode::try_from(&init).unwrap();
+    let capabilities = mode.capabilities();
     let initialize_data = serde_json::json!({
-        "capabilities": server_capabilities,
+        "capabilities": capabilities,
         "serverInfo": {
             "name": "lsp-tarpaulin",
             "version": env!("CARGO_PKG_VERSION")
@@ -82,21 +62,18 @@ fn main() {
 
     conn.initialize_finish(id, initialize_data).unwrap();
 
-    let worker = Worker::new(pkg, conn.sender);
+    //mode.run(&conn, &pkg);
 
-    let span = info_span!("recv-loop");
-    let _guard = span.enter();
+    let _span = info_span!("recv-loop").entered();
 
     for msg in conn.receiver.iter() {
-        let span = info_span!("msg processing", ?msg);
-        let _guard = span.enter();
+        let _span = info_span!("msg processing", ?msg).entered();
 
         match msg {
             lsp_server::Message::Request(_) => (),
             lsp_server::Message::Response(_) => (),
             lsp_server::Message::Notification(note) => {
                 if note.method == lsp_types::notification::DidSaveTextDocument::METHOD {
-                    worker.check();
                     info!("text document did save!");
                 }
             }
@@ -104,5 +81,4 @@ fn main() {
     }
 
     threads.join().unwrap();
-    worker.dismiss();
 }

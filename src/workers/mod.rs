@@ -1,3 +1,4 @@
+use lsp_server::RequestId;
 use std::path::PathBuf;
 
 mod ingest;
@@ -9,6 +10,9 @@ pub use process::process;
 pub use report::report;
 
 enum Trigger {
+    DocDiag(RequestId, PathBuf),
+    WorkDiag(RequestId),
+    WorkDiagRefresh(RequestId),
     Write(PathBuf),
     Open(PathBuf),
 }

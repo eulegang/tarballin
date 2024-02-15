@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use crossbeam_channel::{Receiver, Sender};
 use tracing::{error, info_span};
@@ -11,13 +11,17 @@ pub fn process(
     package: String,
     resent: &Sender<Trigger>,
     rx: &Receiver<Trigger>,
-    tx: &Sender<(PathBuf, Vec<Trace>)>,
+    tx: &Sender<(PathBuf, Arc<[Trace]>)>,
 ) {
     let _span = info_span!("process worker").entered();
 
+    let mut coverage = Coverage::load(&package).ok();
+
     for trigger in rx.iter() {
         match trigger {
+            Trigger::WorkDiagRefresh(_) => todo!(),
             Trigger::Write(_) => todo!(),
+
             Trigger::Open(path) => {
                 let mut coverage = match Coverage::load(&package) {
                     Ok(c) => c,
@@ -36,6 +40,8 @@ pub fn process(
                     break;
                 };
             }
+            Trigger::DocDiag(_, _) => todo!(),
+            Trigger::WorkDiag(_) => todo!(),
         }
     }
 }
