@@ -116,7 +116,7 @@ impl Mode {
             Mode::Adhoc => ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Options(
                     TextDocumentSyncOptions {
-                        open_close: None,
+                        open_close: Some(true),
                         change: None,
                         will_save: None,
                         will_save_wait_until: None,

@@ -1,131 +1,119 @@
 use std::{
-    collections::HashSet,
-    path::PathBuf,
-    process::{Command, Stdio},
-    sync::{Arc, Condvar, Mutex},
-    thread::JoinHandle,
+    process::{Child, Command, Stdio},
+    time::Duration,
 };
 
 use crossbeam_channel::{select, Receiver, Sender};
 use tracing::{error, trace};
 
-use crate::Error;
+#[derive(Debug, thiserror::Error)]
+pub enum RunError {
+    #[error("{0}")]
+    IO(#[from] std::io::Error),
 
-pub struct Runner {
-    agg_handle: JoinHandle<()>,
-    run_handle: JoinHandle<()>,
-    sender: Sender<PathBuf>,
+    #[error("Failed to run tarpaulin")]
+    Failure,
 }
 
-impl Runner {
-    pub fn spawn(results: Sender<Option<HashSet<PathBuf>>>) -> Self {
-        let (sender, recver) = crossbeam_channel::bounded(1);
-        let rcond = Arc::new((Mutex::new(false), Condvar::new()));
-        let acond = rcond.clone();
-        let (rtx, rrx) = crossbeam_channel::bounded(1);
-
-        let agg_handle = std::thread::spawn(|| agg_loop(acond, rrx, recver, results));
-        let run_handle = std::thread::spawn(|| run_loop(rcond, rtx));
-
-        Self {
-            agg_handle,
-            run_handle,
-            sender,
-        }
-    }
-
-    pub fn join(self) {
-        let _ = self.agg_handle.join();
-        let _ = self.run_handle.join();
-    }
-
-    pub fn saved(&self, path: PathBuf) {
-        self.sender.send(path).unwrap();
-    }
+#[derive(PartialEq, Eq)]
+pub enum Input {
+    Run,
+    Kill,
 }
 
-pub fn agg_loop(
-    arc: Arc<(Mutex<bool>, Condvar)>,
-    signal: Receiver<bool>,
-    income: Receiver<PathBuf>,
-    results: Sender<Option<HashSet<PathBuf>>>,
-) {
-    let mut agg = HashSet::new();
+pub enum Status {
+    Success,
+    Failure,
+    Reset,
+    Starting,
+}
+
+pub fn runner_thread(input: Receiver<Input>, status: Sender<Status>) {
     loop {
-        select! {
-            recv(signal) -> outcome => {
-                if let Ok(outcome) = outcome {
-                    if outcome {
-                        let res = agg;
-                        agg = HashSet::new();
-                        if results.send(Some(res)).is_err() {
-                            return;
-                        }
-                    } else {
-                        agg.clear();
-                        if results.send(None).is_err() {
-                            return;
-                        }
-                    }
+        let Ok(w) = input.recv() else {
+            return;
+        };
 
-                }
+        if w != Input::Run {
+            continue;
+        }
+
+        if status.send(Status::Starting).is_err() {
+            return;
+        }
+
+        let mut child = match run() {
+            Ok(child) => child,
+            Err(error) => {
+                error!(%error, "failed to run command");
+                continue;
             }
+        };
 
-            recv(income) -> path => {
-                if let Ok(path) = path {
-                    agg.insert(path);
-                }
+        'check: loop {
+            let Ok(job_st) = child.try_wait() else {
+                break 'check;
+            };
 
-                {
-                    let mut running = arc.0.lock().unwrap();
-                    if !*running {
-                        *running = true;
-                        arc.1.notify_one();
+            if let Some(st) = job_st {
+                trace!(%st, "job completed");
+                if st.success() {
+                    if status.send(Status::Success).is_err() {
+                        return;
+                    }
+                } else {
+                    if status.send(Status::Failure).is_err() {
+                        return;
                     }
                 }
+
+                break 'check;
+            }
+
+            let i = select! {
+                recv(input) -> i => {
+                    let Ok(i) = i else { return; };
+                    i
+                }
+
+                default(Duration::from_millis(200)) => {
+                    tracing::trace!("command watcher wakeup");
+                    continue 'check;
+                }
+            };
+
+            match i {
+                Input::Run => {
+                    if status.send(Status::Reset).is_err() {
+                        return;
+                    }
+
+                    child = match run() {
+                        Ok(child) => child,
+                        Err(error) => {
+                            error!(%error, "failed to run command");
+                            continue;
+                        }
+                    };
+                }
+
+                Input::Kill => {
+                    let _ = child.kill();
+                    break 'check;
+                }
             }
         }
     }
 }
 
-pub fn run_loop(arc: Arc<(Mutex<bool>, Condvar)>, signal: Sender<bool>) {
-    loop {
-        let mut guard = arc.0.lock().unwrap();
-
-        while !*guard {
-            guard = arc.1.wait(guard).unwrap();
-        }
-
-        if let Err(error) = run() {
-            error!(%error, "failed to run tarpaulin");
-            *guard = false;
-            if signal.send(false).is_err() {
-                return;
-            }
-        } else {
-            *guard = false;
-            if signal.send(true).is_err() {
-                return;
-            }
-        }
-    }
-}
-
-pub fn run() -> Result<(), Error> {
+fn run() -> Result<Child, RunError> {
     trace!("spawning tarpaulin");
-    let mut proc = Command::new("cargo")
+    let proc = Command::new("cargo")
         .arg("tarpaulin")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .stdout(Stdio::null())
         .spawn()?;
 
-    trace!("waiting tarpaulin");
-    let status = proc.wait()?;
-
-    if !status.success() {
-        return Err(Error::Failure);
-    }
-
-    Ok(())
+    Ok(proc)
 }
