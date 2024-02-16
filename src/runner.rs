@@ -58,10 +58,8 @@ pub fn runner_thread(target_dir: PathBuf, input: Receiver<Input>, status: Sender
                     if status.send(Status::Success).is_err() {
                         return;
                     }
-                } else {
-                    if status.send(Status::Failure).is_err() {
-                        return;
-                    }
+                } else if status.send(Status::Failure).is_err() {
+                    return;
                 }
 
                 break 'check;

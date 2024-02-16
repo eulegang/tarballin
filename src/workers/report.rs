@@ -53,7 +53,7 @@ pub fn report(rx: Receiver<Report>, tx: Sender<Message>) {
 
 fn send_trace(tx: &Sender<Message>, path: &Path, traces: &[Trace]) -> Result<(), ReportError> {
     let content =
-        std::fs::read(&path).map_err(|e| ReportError::FailedFileRead(path.to_path_buf(), e))?;
+        std::fs::read(path).map_err(|e| ReportError::FailedFileRead(path.to_path_buf(), e))?;
 
     let line_slices = LineSlice::build(&content);
 

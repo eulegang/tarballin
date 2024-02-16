@@ -39,7 +39,6 @@ impl Args {
             }
             (Some(path), None) => {
                 let file = File::options()
-                    .write(true)
                     .create(true)
                     .append(true)
                     .open(path)
@@ -54,7 +53,6 @@ impl Args {
             }
             (Some(path), Some(level)) => {
                 let file = File::options()
-                    .write(true)
                     .create(true)
                     .append(true)
                     .open(path)
