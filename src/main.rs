@@ -70,13 +70,15 @@ fn main() {
 
     conn.initialize_finish(id, initialize_data).unwrap();
 
-    //mode.run(&conn, &pkg);
+    let tmpdir = tempdir::TempDir::new("lsp-tarpaulin").unwrap();
+    let target_dir = tmpdir.as_ref().to_path_buf();
 
     let (trigger_tx, trigger_rx) = bounded(8);
     let (report_tx, report_rx) = bounded(8);
 
     let ingest_handle = std::thread::spawn(move || workers::ingest(conn.receiver, trigger_tx));
-    let process_handle = std::thread::spawn(move || workers::process(pkg, trigger_rx, report_tx));
+    let process_handle =
+        std::thread::spawn(move || workers::process(pkg, target_dir, trigger_rx, report_tx));
     let report_handle = std::thread::spawn(move || workers::report(report_rx, conn.sender));
 
     threads.join().unwrap();

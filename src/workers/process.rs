@@ -36,13 +36,13 @@ impl<T> From<SendError<T>> for ProcessError {
     }
 }
 
-pub fn process(package: String, rx: Receiver<Trigger>, tx: Sender<Report>) {
+pub fn process(package: String, target: PathBuf, rx: Receiver<Trigger>, tx: Sender<Report>) {
     let _span = info_span!("process worker").entered();
 
     let (input_tx, input_rx) = bounded(1);
     let (status_tx, status_rx) = bounded(1);
 
-    let handle = std::thread::spawn(|| runner_thread(input_rx, status_tx));
+    let handle = std::thread::spawn(|| runner_thread(target, input_rx, status_tx));
 
     let coverage = Coverage::load(&package).ok();
     let interest = HashSet::new();

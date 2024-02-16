@@ -1,4 +1,5 @@
 use std::{
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     time::Duration,
 };
@@ -10,15 +11,11 @@ use tracing::{error, trace};
 pub enum RunError {
     #[error("{0}")]
     IO(#[from] std::io::Error),
-
-    #[error("Failed to run tarpaulin")]
-    Failure,
 }
 
 #[derive(PartialEq, Eq)]
 pub enum Input {
     Run,
-    Kill,
 }
 
 pub enum Status {
@@ -28,7 +25,7 @@ pub enum Status {
     Starting,
 }
 
-pub fn runner_thread(input: Receiver<Input>, status: Sender<Status>) {
+pub fn runner_thread(target_dir: PathBuf, input: Receiver<Input>, status: Sender<Status>) {
     loop {
         let Ok(w) = input.recv() else {
             return;
@@ -42,7 +39,7 @@ pub fn runner_thread(input: Receiver<Input>, status: Sender<Status>) {
             return;
         }
 
-        let mut child = match run() {
+        let mut child = match run(&target_dir) {
             Ok(child) => child,
             Err(error) => {
                 error!(%error, "failed to run command");
@@ -88,7 +85,7 @@ pub fn runner_thread(input: Receiver<Input>, status: Sender<Status>) {
                         return;
                     }
 
-                    child = match run() {
+                    child = match run(&target_dir) {
                         Ok(child) => child,
                         Err(error) => {
                             error!(%error, "failed to run command");
@@ -96,20 +93,17 @@ pub fn runner_thread(input: Receiver<Input>, status: Sender<Status>) {
                         }
                     };
                 }
-
-                Input::Kill => {
-                    let _ = child.kill();
-                    break 'check;
-                }
             }
         }
     }
 }
 
-fn run() -> Result<Child, RunError> {
+fn run(path: &Path) -> Result<Child, RunError> {
     trace!("spawning tarpaulin");
     let proc = Command::new("cargo")
         .arg("tarpaulin")
+        .arg("--target-dir")
+        .arg(path)
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .stdout(Stdio::null())
