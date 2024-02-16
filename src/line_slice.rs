@@ -9,8 +9,8 @@ impl LineSlice {
     pub fn build(slice: &[u8]) -> Vec<LineSlice> {
         let mut start = 0;
         let mut begin = 0;
-        let mut end = 0;
         let mut pre = true;
+        let mut end;
 
         let mut lines = Vec::new();
 
@@ -28,7 +28,6 @@ impl LineSlice {
 
                 start = i + 1;
                 begin = i + 1;
-                end = i + 1;
 
                 continue;
             }
