@@ -1,5 +1,6 @@
-use std::{fmt::write, io::BufRead, path::Path};
+use std::{io::BufRead, path::Path};
 
+#[derive(Default)]
 pub struct Ignore {
     patterns: Vec<Pattern>,
 }
@@ -44,9 +45,12 @@ impl Ignore {
     pub fn is_empty(&self) -> bool {
         self.patterns.is_empty()
     }
+}
 
-    pub fn len(&self) -> usize {
-        self.patterns.len()
+// yes I know I'm the worst
+impl std::ops::AddAssign for Ignore {
+    fn add_assign(&mut self, rhs: Self) {
+        self.patterns.extend(rhs.patterns)
     }
 }
 

@@ -1,8 +1,12 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 use crossbeam_channel::bounded;
 use lsp_server::Connection;
 use lsp_types::InitializeParams;
 use tracing::{debug, info, info_span};
+
+use crate::ignore::Ignore;
 
 mod cli;
 mod coverage;
@@ -61,6 +65,21 @@ fn main() {
 
     });
 
+    let mut ignore = Ignore::default();
+    let mut check = false;
+    if let Ok(project) = Ignore::load(&PathBuf::from("tarballin-ignore")) {
+        ignore += project;
+        check = true;
+    }
+    if let Ok(project) = Ignore::load(&PathBuf::from(".tarballin-ignore")) {
+        ignore += project;
+        check = true;
+    }
+
+    if check && ignore.is_empty() {
+        // should turn off language server
+    }
+
     let pkg = {
         let manifest = cargo_toml::Manifest::from_path("Cargo.toml").unwrap();
         manifest.package().name.clone()
@@ -77,8 +96,9 @@ fn main() {
     let (report_tx, report_rx) = bounded(8);
 
     let ingest_handle = std::thread::spawn(move || workers::ingest(conn.receiver, trigger_tx));
-    let process_handle =
-        std::thread::spawn(move || workers::process(pkg, target_dir, trigger_rx, report_tx));
+    let process_handle = std::thread::spawn(move || {
+        workers::process(pkg, target_dir, ignore, trigger_rx, report_tx)
+    });
     let report_handle = std::thread::spawn(move || workers::report(report_rx, conn.sender));
 
     threads.join().unwrap();

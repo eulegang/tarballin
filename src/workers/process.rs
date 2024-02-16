@@ -6,6 +6,7 @@ use tracing::{error, info_span};
 
 use crate::{
     coverage::Coverage,
+    ignore::Ignore,
     runner::{runner_thread, Input, Status},
 };
 
@@ -14,6 +15,7 @@ use super::{Report, Trigger};
 struct State {
     package: String,
     generation: usize,
+    ignore: Ignore,
     coverage: Option<Coverage>,
     interest: HashSet<PathBuf>,
 }
@@ -36,7 +38,13 @@ impl<T> From<SendError<T>> for ProcessError {
     }
 }
 
-pub fn process(package: String, target: PathBuf, rx: Receiver<Trigger>, tx: Sender<Report>) {
+pub fn process(
+    package: String,
+    target: PathBuf,
+    ignore: Ignore,
+    rx: Receiver<Trigger>,
+    tx: Sender<Report>,
+) {
     let _span = info_span!("process worker").entered();
 
     let (input_tx, input_rx) = bounded(1);
@@ -47,6 +55,7 @@ pub fn process(package: String, target: PathBuf, rx: Receiver<Trigger>, tx: Send
     let coverage = Coverage::load(&package).ok();
     let interest = HashSet::new();
     let mut state = State {
+        ignore,
         package,
         generation: 1,
         coverage,
@@ -93,11 +102,13 @@ fn handle_trigger(
         Trigger::Open(path) => {
             let coverage = Coverage::load(&state.package)?;
 
-            let Some(traces) = coverage.traces.get(&path.display().to_string()) else {
-                return Err(ProcessError::MissingTrace(path));
-            };
+            if !state.ignore.matches(&path) {
+                let Some(traces) = coverage.traces.get(&path.display().to_string()) else {
+                    return Err(ProcessError::MissingTrace(path));
+                };
 
-            tx.send(Report::Plain(path, traces.clone()))?;
+                tx.send(Report::Plain(path, traces.clone()))?;
+            }
         }
         Trigger::DocDiag(_, _) => todo!(),
         Trigger::WorkDiag(_) => todo!(),
@@ -119,7 +130,11 @@ fn handle_status(
 
             if let Some(cov) = &state.coverage {
                 for (path, traces) in &cov.traces {
-                    tx.send(Report::Plain(path.into(), traces.clone()))?;
+                    let path: PathBuf = path.into();
+
+                    if !state.ignore.matches(&path) {
+                        tx.send(Report::Plain(path, traces.clone()))?;
+                    }
                 }
             }
         }
