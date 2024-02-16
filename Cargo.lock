@@ -223,24 +223,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lsp-tarpaulin"
-version = "0.1.0"
-dependencies = [
- "cargo_toml",
- "clap",
- "crossbeam-channel",
- "lsp-server",
- "lsp-types",
- "serde",
- "serde_json",
- "tempdir",
- "thiserror",
- "tracing",
- "tracing-subscriber",
- "url",
-]
-
-[[package]]
 name = "lsp-types"
 version = "0.95.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -444,6 +426,24 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "tarballin"
+version = "0.1.0"
+dependencies = [
+ "cargo_toml",
+ "clap",
+ "crossbeam-channel",
+ "lsp-server",
+ "lsp-types",
+ "serde",
+ "serde_json",
+ "tempdir",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
