@@ -1,10 +1,11 @@
 use std::{io::BufRead, path::Path};
 
-#[derive(Default)]
+#[derive(Default, PartialEq, Eq, Debug)]
 pub struct Ignore {
     patterns: Vec<Pattern>,
 }
 
+#[derive(PartialEq, Eq, Debug)]
 enum Pattern {
     Plain(String),
 }
@@ -19,10 +20,8 @@ impl Ignore {
         false
     }
 
-    pub fn load(path: &Path) -> std::io::Result<Self> {
-        let content = std::fs::read(path)?;
+    fn parse(content: &[u8]) -> std::io::Result<Self> {
         let mut patterns = Vec::new();
-
         for line in content.lines() {
             let line = line?;
 
@@ -39,7 +38,12 @@ impl Ignore {
             patterns.push(Pattern::Plain(content.trim().to_string()));
         }
 
-        Ok(Ignore { patterns })
+        Ok(Self { patterns })
+    }
+
+    pub fn load(path: &Path) -> std::io::Result<Self> {
+        let content = std::fs::read(path)?;
+        Self::parse(&content)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -60,4 +64,18 @@ impl Pattern {
             Pattern::Plain(pat) => path.to_str() == Some(pat.as_str()),
         }
     }
+}
+
+#[test]
+fn test_parse() {
+    const CONTENT: &[u8] = b"/src/main.rs";
+
+    let ignore = Ignore::parse(CONTENT).unwrap();
+
+    assert_eq!(
+        ignore,
+        Ignore {
+            patterns: vec![Pattern::Plain("/src/main.rs".to_string())]
+        }
+    );
 }
