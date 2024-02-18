@@ -49,7 +49,7 @@ impl<T> From<SendError<T>> for ProcessError {
     }
 }
 
-pub fn process(
+pub fn run(
     package: String,
     target: PathBuf,
     workspaces: Vec<PathBuf>,

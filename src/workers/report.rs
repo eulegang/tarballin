@@ -32,7 +32,7 @@ impl<T> From<SendError<T>> for ReportError {
     }
 }
 
-pub fn report(rx: Receiver<Report>, tx: Sender<Message>) {
+pub fn run(rx: Receiver<Report>, tx: Sender<Message>) {
     let _span = info_span!("report").entered();
 
     for msg in rx.iter() {

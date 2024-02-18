@@ -6,9 +6,9 @@ mod ingest;
 mod process;
 mod report;
 
-pub use ingest::ingest;
-pub use process::process;
-pub use report::report;
+pub use ingest::run as ingest;
+pub use process::run as process;
+pub use report::run as report;
 
 use crate::coverage::Trace;
 

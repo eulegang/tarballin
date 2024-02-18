@@ -5,3 +5,6 @@ src/main.rs
 src/ignore.rs
     ((function_item name: (identifier) @id) (#eq? @id "load")) @query
 
+src/workers/*.rs
+    ((function_item name: (identifier) @id) (#eq? @id "run")) @query
+

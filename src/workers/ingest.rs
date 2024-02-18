@@ -34,7 +34,7 @@ impl<T> From<SendError<T>> for IngestError {
     }
 }
 
-pub fn ingest(rx: Receiver<Message>, tx: Sender<Trigger>) {
+pub fn run(rx: Receiver<Message>, tx: Sender<Trigger>) {
     let _span = info_span!("ingestion worker").entered();
 
     for msg in rx.iter() {
