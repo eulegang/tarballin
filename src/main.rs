@@ -98,7 +98,7 @@ fn main() {
 
     conn.initialize_finish(id, initialize_data).unwrap();
 
-    let tmpdir = tempdir::TempDir::new("lsp-tarpaulin").unwrap();
+    let tmpdir = tempdir::TempDir::new("tarballin").unwrap();
     let target_dir = tmpdir.as_ref().to_path_buf();
 
     let (trigger_tx, trigger_rx) = bounded(8);
