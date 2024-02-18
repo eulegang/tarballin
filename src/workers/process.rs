@@ -3,10 +3,11 @@ use std::{collections::HashSet, path::PathBuf};
 use crossbeam_channel::{bounded, select, Receiver, SendError, Sender};
 use lsp_types::MessageType;
 use tracing::{error, info_span};
+use tree_sitter::QueryCursor;
 
 use crate::{
     coverage::Coverage,
-    ignore::Ignore,
+    ignore::{Ignore, IgnoreResult},
     runner::{runner_thread, Input, Status},
 };
 
@@ -27,6 +28,12 @@ enum ProcessError {
 
     #[error("missing path from coverage {0}")]
     MissingTrace(PathBuf),
+
+    #[error("failed to read {0}: {1}")]
+    FailedRead(PathBuf, std::io::Error),
+
+    #[error("{0}")]
+    Eyre(#[from] eyre::Error),
 
     #[error("closed channel")]
     ChannelClose,
@@ -101,14 +108,18 @@ fn handle_trigger(
 
         Trigger::Open(path) => {
             let coverage = Coverage::load(&state.package)?;
+            let result = state.ignore.matches(&path);
 
-            if !state.ignore.matches(&path) {
-                let Some(traces) = coverage.traces.get(&path.display().to_string()) else {
-                    return Err(ProcessError::MissingTrace(path));
-                };
+            let Some(traces) = coverage.traces.get(&path.display().to_string()) else {
+                return Err(ProcessError::MissingTrace(path));
+            };
 
-                tx.send(Report::Plain(path, traces.clone()))?;
-            }
+            let content =
+                std::fs::read(&path).map_err(|e| ProcessError::FailedRead(path.clone(), e))?;
+
+            let traces = result.filter(&content, traces)?;
+
+            tx.send(Report::Plain(path, traces))?;
         }
         Trigger::DocDiag(_, _) => todo!(),
         Trigger::WorkDiag(_) => todo!(),
@@ -131,10 +142,14 @@ fn handle_status(
             if let Some(cov) = &state.coverage {
                 for (path, traces) in &cov.traces {
                     let path: PathBuf = path.into();
+                    let result = state.ignore.matches(&path);
 
-                    if !state.ignore.matches(&path) {
-                        tx.send(Report::Plain(path, traces.clone()))?;
-                    }
+                    let content = std::fs::read(&path)
+                        .map_err(|e| ProcessError::FailedRead(path.clone(), e))?;
+
+                    let traces = result.filter(&content, traces)?;
+
+                    tx.send(Report::Plain(path, traces))?;
                 }
             }
         }

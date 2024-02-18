@@ -1,6 +1,6 @@
 use lsp_server::RequestId;
 use lsp_types::MessageType;
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 
 mod ingest;
 mod process;
@@ -21,6 +21,6 @@ pub enum Trigger {
 }
 
 pub enum Report {
-    Plain(PathBuf, Arc<[Trace]>),
+    Plain(PathBuf, Vec<Trace>),
     Message(MessageType, String),
 }

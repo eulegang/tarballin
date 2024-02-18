@@ -1,27 +1,81 @@
 use std::{io::BufRead, path::Path};
 
-#[derive(Default, PartialEq, Eq, Debug)]
-pub struct Ignore {
-    patterns: Vec<Pattern>,
+use eyre::ContextCompat;
+use glob::{MatchOptions, Pattern};
+use tree_sitter::{Language, Parser, Query, QueryCursor};
+
+use crate::coverage::Trace;
+
+extern "C" {
+    fn tree_sitter_rust() -> Language;
 }
 
-#[derive(PartialEq, Eq, Debug)]
-enum Pattern {
-    Plain(String),
+#[derive(Default, PartialEq, Debug)]
+pub struct Ignore {
+    rules: Vec<Rule>,
+}
+
+pub enum IgnoreResult<'a> {
+    Ignore,
+    Apply,
+    Partial(&'a [Query]),
+}
+
+impl<'a> IgnoreResult<'a> {
+    pub fn filter(&self, content: &[u8], traces: &[Trace]) -> eyre::Result<Vec<Trace>> {
+        match self {
+            IgnoreResult::Ignore => Ok(traces.to_vec()),
+            IgnoreResult::Apply => Ok(vec![]),
+            IgnoreResult::Partial(queries) => {
+                let mut parser = Parser::new();
+                parser.set_language(unsafe { tree_sitter_rust() })?;
+                let tree = parser
+                    .parse(content, None)
+                    .with_context(|| "failed to parse tree")?;
+
+                let node = tree.root_node();
+
+                let mut cur = QueryCursor::new();
+
+                let traces = traces.to_vec();
+
+                for query in queries.iter() {
+                    let captures = cur.captures(query, node, content);
+
+                    for (capt, _) in captures {
+                        for sub in capt.captures {
+                            sub.node.start_position();
+                        }
+                    }
+                }
+
+                Ok(traces)
+            }
+        }
+    }
+}
+
+#[derive(PartialEq, Debug)]
+struct Rule {
+    pattern: Pattern,
+    queries: Vec<Query>,
 }
 
 impl Ignore {
-    pub fn matches(&self, path: &Path) -> bool {
-        for pat in &self.patterns {
-            if pat.matches(path) {
-                return true;
+    pub fn matches(&self, path: &Path) -> IgnoreResult {
+        for pat in &self.rules {
+            let result = pat.matches(path);
+
+            if !matches!(result, IgnoreResult::Ignore) {
+                return result;
             }
         }
-        false
+
+        IgnoreResult::Ignore
     }
 
-    fn parse(content: &[u8]) -> std::io::Result<Self> {
-        let mut patterns = Vec::new();
+    fn parse(content: &[u8]) -> eyre::Result<Self> {
+        let mut rules = Vec::<Rule>::new();
         for line in content.lines() {
             let line = line?;
 
@@ -35,33 +89,61 @@ impl Ignore {
                 continue;
             }
 
-            patterns.push(Pattern::Plain(content.trim().to_string()));
+            if content.starts_with(' ') || content.starts_with('\t') {
+                let Some(rule) = rules.last_mut() else {
+                    continue;
+                };
+
+                let content = content.trim();
+
+                let query = Query::new(unsafe { tree_sitter_rust() }, content)?;
+
+                rule.queries.push(query);
+            } else {
+                let content = content.trim();
+                let pattern = Pattern::new(content)?;
+                let queries = vec![];
+
+                rules.push(Rule { pattern, queries });
+            }
         }
 
-        Ok(Self { patterns })
+        Ok(Self { rules })
     }
 
-    pub fn load(path: &Path) -> std::io::Result<Self> {
+    pub fn load(path: &Path) -> eyre::Result<Self> {
         let content = std::fs::read(path)?;
         Self::parse(&content)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.patterns.is_empty()
+        self.rules.is_empty()
     }
 }
 
 // yes I know I'm the worst
 impl std::ops::AddAssign for Ignore {
     fn add_assign(&mut self, rhs: Self) {
-        self.patterns.extend(rhs.patterns)
+        self.rules.extend(rhs.rules)
     }
 }
 
-impl Pattern {
-    pub fn matches(&self, path: &Path) -> bool {
-        match self {
-            Pattern::Plain(pat) => path.to_str() == Some(pat.as_str()),
+impl Rule {
+    pub fn matches(&self, path: &Path) -> IgnoreResult {
+        let opts = MatchOptions {
+            case_sensitive: true,
+            require_literal_separator: true,
+            require_literal_leading_dot: true,
+        };
+
+        if self.pattern.matches_path_with(path, opts) {
+            if self.queries.is_empty() {
+                IgnoreResult::Ignore
+            } else {
+                IgnoreResult::Partial(&self.queries)
+            }
+        } else {
+            IgnoreResult::Apply
         }
     }
 }
@@ -75,7 +157,10 @@ fn test_parse() {
     assert_eq!(
         ignore,
         Ignore {
-            patterns: vec![Pattern::Plain("/src/main.rs".to_string())]
+            rules: vec![Rule {
+                pattern: Pattern::new("/src/main.rs").unwrap(),
+                queries: vec![]
+            }]
         }
     );
 }

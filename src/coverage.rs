@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, sync::Arc};
+use std::{collections::HashMap, fs::File};
 
 use serde::Deserialize;
 
@@ -6,10 +6,10 @@ use crate::Error;
 
 #[derive(Deserialize)]
 pub struct Coverage {
-    pub traces: HashMap<String, Arc<[Trace]>>,
+    pub traces: HashMap<String, Vec<Trace>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Trace {
     pub line: u32,
     pub address: Vec<usize>,
@@ -18,7 +18,7 @@ pub struct Trace {
     pub fn_name: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Stats {
     #[serde(rename = "Line")]
     pub line: usize,
