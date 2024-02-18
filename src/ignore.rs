@@ -2,13 +2,10 @@ use std::{io::BufRead, path::Path};
 
 use eyre::ContextCompat;
 use glob::{MatchOptions, Pattern};
-use tree_sitter::{Language, Parser, Query, QueryCursor};
+use tree_sitter::{Parser, Query, QueryCursor};
+use tree_sitter_rust::language;
 
 use crate::coverage::Trace;
-
-extern "C" {
-    fn tree_sitter_rust() -> Language;
-}
 
 #[derive(Default, PartialEq, Debug)]
 pub struct Ignore {
@@ -28,7 +25,7 @@ impl<'a> IgnoreResult<'a> {
             IgnoreResult::Apply => Ok(vec![]),
             IgnoreResult::Partial(queries) => {
                 let mut parser = Parser::new();
-                parser.set_language(unsafe { tree_sitter_rust() })?;
+                parser.set_language(language())?;
                 let tree = parser
                     .parse(content, None)
                     .with_context(|| "failed to parse tree")?;
@@ -96,7 +93,7 @@ impl Ignore {
 
                 let content = content.trim();
 
-                let query = Query::new(unsafe { tree_sitter_rust() }, content)?;
+                let query = Query::new(language(), content)?;
 
                 rule.queries.push(query);
             } else {
