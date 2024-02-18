@@ -80,10 +80,19 @@ fn main() {
         // should turn off language server
     }
 
+    debug!(?ignore, "ignore file");
+
     let pkg = {
         let manifest = cargo_toml::Manifest::from_path("Cargo.toml").unwrap();
         manifest.package().name.clone()
     };
+
+    let workspaces = init
+        .workspace_folders
+        .unwrap_or_default()
+        .iter()
+        .map(|ws| ws.uri.to_file_path().unwrap())
+        .collect::<Vec<_>>();
 
     debug!(?initialize_data, "finished initialization");
 
@@ -97,7 +106,7 @@ fn main() {
 
     let ingest_handle = std::thread::spawn(move || workers::ingest(conn.receiver, trigger_tx));
     let process_handle = std::thread::spawn(move || {
-        workers::process(pkg, target_dir, ignore, trigger_rx, report_tx)
+        workers::process(pkg, target_dir, workspaces, ignore, trigger_rx, report_tx)
     });
     let report_handle = std::thread::spawn(move || workers::report(report_rx, conn.sender));
 

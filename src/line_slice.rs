@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct LineSlice {
     pub start: usize,
     pub begin: usize,
@@ -39,5 +39,45 @@ impl LineSlice {
         }
 
         lines
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_slice() {
+        const CONTENT: &str = r#"
+fn main() {
+    println!("Hello World!");
+}
+"#;
+
+        assert_eq!(
+            LineSlice::build(CONTENT.as_bytes()),
+            vec![
+                LineSlice {
+                    start: 0,
+                    begin: 0,
+                    end: 0
+                },
+                LineSlice {
+                    start: 1,
+                    begin: 1,
+                    end: 12
+                },
+                LineSlice {
+                    start: 13,
+                    begin: 17,
+                    end: 42
+                },
+                LineSlice {
+                    start: 43,
+                    begin: 43,
+                    end: 44
+                },
+            ]
+        );
     }
 }

@@ -1,13 +1,15 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use crossbeam_channel::{bounded, select, Receiver, SendError, Sender};
 use lsp_types::MessageType;
-use tracing::{error, info_span};
-use tree_sitter::QueryCursor;
+use tracing::{debug, error, info_span};
 
 use crate::{
     coverage::Coverage,
-    ignore::{Ignore, IgnoreResult},
+    ignore::Ignore,
     runner::{runner_thread, Input, Status},
 };
 
@@ -15,10 +17,12 @@ use super::{Report, Trigger};
 
 struct State {
     package: String,
+    target: PathBuf,
     generation: usize,
     ignore: Ignore,
     coverage: Option<Coverage>,
     interest: HashSet<PathBuf>,
+    workspaces: Vec<PathBuf>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -48,6 +52,7 @@ impl<T> From<SendError<T>> for ProcessError {
 pub fn process(
     package: String,
     target: PathBuf,
+    workspaces: Vec<PathBuf>,
     ignore: Ignore,
     rx: Receiver<Trigger>,
     tx: Sender<Report>,
@@ -57,16 +62,21 @@ pub fn process(
     let (input_tx, input_rx) = bounded(1);
     let (status_tx, status_rx) = bounded(1);
 
-    let handle = std::thread::spawn(|| runner_thread(target, input_rx, status_tx));
+    let handle = {
+        let target = target.clone();
+        std::thread::spawn(|| runner_thread(target, input_rx, status_tx))
+    };
 
-    let coverage = Coverage::load(&package).ok();
+    let coverage = Coverage::load(&package, &target).ok();
     let interest = HashSet::new();
     let mut state = State {
         ignore,
+        target,
         package,
         generation: 1,
         coverage,
         interest,
+        workspaces,
     };
 
     loop {
@@ -107,10 +117,12 @@ fn handle_trigger(
         }
 
         Trigger::Open(path) => {
-            let coverage = Coverage::load(&state.package)?;
-            let result = state.ignore.matches(&path);
+            let coverage = Coverage::load(&state.package, &state.target)?;
+            //let path = state.strip_workspaces(path);
+            let result = state.ignore.matches(state.strip_workspaces(&path));
+            debug!(?result, "ignore result");
 
-            let Some(traces) = coverage.traces.get(&path.display().to_string()) else {
+            let Some(traces) = coverage.traces.get(&path) else {
                 return Err(ProcessError::MissingTrace(path));
             };
 
@@ -137,12 +149,13 @@ fn handle_status(
         Status::Success => {
             tracing::debug!("successful coverage found");
             state.generation += 1;
-            state.coverage = Coverage::load(&state.package).ok();
+            state.coverage = Coverage::load(&state.package, &state.target).ok();
 
             if let Some(cov) = &state.coverage {
                 for (path, traces) in &cov.traces {
                     let path: PathBuf = path.into();
-                    let result = state.ignore.matches(&path);
+                    let result = state.ignore.matches(state.strip_workspaces(&path));
+                    debug!(?result, "ignore result");
 
                     let content = std::fs::read(&path)
                         .map_err(|e| ProcessError::FailedRead(path.clone(), e))?;
@@ -179,4 +192,16 @@ fn handle_status(
     }
 
     Ok(())
+}
+
+impl State {
+    fn strip_workspaces<'a>(&self, path: &'a Path) -> &'a Path {
+        for workspace in &self.workspaces {
+            if let Ok(p) = path.strip_prefix(workspace) {
+                return p;
+            }
+        }
+
+        path
+    }
 }

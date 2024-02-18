@@ -1,0 +1,7 @@
+
+# we don't care to cover main
+src/main.rs
+
+src/ignore.rs
+    ((function_item name: (identifier) @id) (#eq? @id "load")) @query
+
