@@ -5,6 +5,9 @@ src/main.rs
 src/ignore.rs
     ((function_item name: (identifier) @id) (#eq? @id "load")) @query
 
+src/cli.rs
+    ((function_item name: (identifier) @id) (#eq? @id "setup_subscriber")) @query
+
 src/workers/*.rs
     ((function_item name: (identifier) @id) (#eq? @id "run")) @query
 
