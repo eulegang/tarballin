@@ -5,7 +5,7 @@ use std::{
 
 use crossbeam_channel::{bounded, select, Receiver, SendError, Sender};
 use lsp_types::MessageType;
-use tracing::{debug, error, info_span};
+use tracing::{debug, error, info_span, trace};
 
 use crate::{
     coverage::Coverage,
@@ -93,6 +93,7 @@ pub fn run(
         };
 
         if matches!(result, Err(ProcessError::ChannelClose)) {
+            debug!("quiting processing loop");
             break;
         }
 
@@ -135,6 +136,13 @@ fn handle_trigger(
         }
         Trigger::DocDiag(_, _) => todo!(),
         Trigger::WorkDiag(_) => todo!(),
+
+        Trigger::Exit(id) => {
+            trace!("exiting process worker");
+            tx.send(Report::Exit(id))?;
+            input_tx.send(Input::Exit)?;
+            return Err(ProcessError::ChannelClose);
+        }
     }
 
     Ok(())

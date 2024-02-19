@@ -18,9 +18,11 @@ pub enum Trigger {
     WorkDiagRefresh(RequestId),
     Write(PathBuf),
     Open(PathBuf),
+    Exit(RequestId),
 }
 
 pub enum Report {
     Plain(PathBuf, Vec<Trace>),
     Message(MessageType, String),
+    Exit(RequestId),
 }

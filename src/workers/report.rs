@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 
 use crossbeam_channel::{Receiver, SendError, Sender};
-use lsp_server::{Message, Notification};
+use lsp_server::{Message, Notification, Response};
 use lsp_types::{
     notification::{PublishDiagnostics, ShowMessage},
     Diagnostic, DiagnosticSeverity, MessageType, Position, PublishDiagnosticsParams, Range,
     ShowMessageParams,
 };
-use tracing::{error, info_span};
+use tracing::{error, info_span, trace};
 use url::Url;
 
 use crate::{coverage::Trace, line_slice::LineSlice};
@@ -39,9 +39,15 @@ pub fn run(rx: Receiver<Report>, tx: Sender<Message>) {
         let result = match msg {
             Report::Plain(path, trace) => send_trace(&tx, &path, &trace),
             Report::Message(ty, message) => send_message(&tx, ty, message),
+            Report::Exit(id) => {
+                let res = Response::new_ok(id, ());
+                let _ = tx.send(Message::Response(res));
+                return;
+            }
         };
 
         if matches!(result, Err(ReportError::SendShutdown)) {
+            trace!("quitting report loop");
             return;
         }
 

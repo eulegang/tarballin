@@ -16,6 +16,7 @@ pub enum RunError {
 #[derive(PartialEq, Eq)]
 pub enum Input {
     Run,
+    Exit,
 }
 
 pub enum Status {
@@ -72,12 +73,13 @@ pub fn runner_thread(target_dir: PathBuf, input: Receiver<Input>, status: Sender
                 }
 
                 default(Duration::from_millis(200)) => {
-                    tracing::trace!("command watcher wakeup");
                     continue 'check;
                 }
             };
 
             match i {
+                Input::Exit => return,
+
                 Input::Run => {
                     if status.send(Status::Reset).is_err() {
                         return;

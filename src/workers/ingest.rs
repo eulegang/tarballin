@@ -2,9 +2,9 @@ use std::path::PathBuf;
 
 use crossbeam_channel::{Receiver, SendError, Sender};
 use lsp_server::{ExtractError, Message, Notification, Request, RequestId};
-use lsp_types::notification::{DidOpenTextDocument, DidSaveTextDocument};
+use lsp_types::notification::{DidOpenTextDocument, DidSaveTextDocument, Exit};
 use lsp_types::request::{
-    DocumentDiagnosticRequest, WorkspaceDiagnosticRefresh, WorkspaceDiagnosticRequest,
+    DocumentDiagnosticRequest, Shutdown, WorkspaceDiagnosticRefresh, WorkspaceDiagnosticRequest,
 };
 use lsp_types::{notification::Notification as _, request::Request as _};
 use serde::de::DeserializeOwned;
@@ -41,6 +41,7 @@ pub fn run(rx: Receiver<Message>, tx: Sender<Trigger>) {
         let result = process(msg, &tx);
 
         if matches!(result, Err(IngestError::SenderClosed)) {
+            trace!("quiting ingest loop");
             return;
         }
 
@@ -98,6 +99,11 @@ fn process(msg: Message, tx: &Sender<Trigger>) -> Result<(), IngestError> {
                 tx.send(Trigger::WorkDiagRefresh(req.id))?;
             }
 
+            Shutdown::METHOD => {
+                trace!("shutdown request");
+                tx.send(Trigger::Exit(req.id))?;
+            }
+
             _ => {
                 warn!(req.method, "unsupported lsp request method")
             }
@@ -119,6 +125,10 @@ fn process(msg: Message, tx: &Sender<Trigger>) -> Result<(), IngestError> {
                 let path = extract_file_url(params.text_document.uri)?;
 
                 tx.send(Trigger::Open(path))?;
+            }
+
+            Exit::METHOD => {
+                return Err(IngestError::SenderClosed);
             }
 
             _ => {

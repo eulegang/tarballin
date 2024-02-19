@@ -4,7 +4,7 @@ use clap::Parser;
 use crossbeam_channel::bounded;
 use lsp_server::Connection;
 use lsp_types::InitializeParams;
-use tracing::{debug, info, info_span};
+use tracing::{debug, info, info_span, trace};
 
 use crate::ignore::Ignore;
 
@@ -110,9 +110,15 @@ fn main() {
     });
     let report_handle = std::thread::spawn(move || workers::report(report_rx, conn.sender));
 
-    threads.join().unwrap();
-
-    ingest_handle.join().unwrap();
+    trace!("joining process");
     process_handle.join().unwrap();
+
+    trace!("joining report");
     report_handle.join().unwrap();
+
+    trace!("joining ingest");
+    ingest_handle.join().unwrap();
+
+    trace!("joining lsp io threads");
+    threads.join().unwrap();
 }
