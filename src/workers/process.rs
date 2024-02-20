@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    fs::File,
     path::{Path, PathBuf},
 };
 
@@ -67,7 +68,24 @@ pub fn run(
         std::thread::spawn(|| runner_thread(target, input_rx, status_tx))
     };
 
-    let coverage = Coverage::load(&package, &target).ok();
+    let mut coverage = None;
+    for workspace in &workspaces {
+        let mut path = workspace.to_path_buf();
+        path.push("target");
+        path.push(".tarballin-cache.json");
+
+        let Ok(file) = File::open(path) else { continue };
+        let Ok(cov) = serde_json::from_reader(file) else {
+            continue;
+        };
+
+        debug!("loaded cached coverage");
+        coverage = Some(cov);
+        break;
+    }
+
+    debug!(loaded = coverage.is_some(), "using cached coverage");
+
     let interest = HashSet::new();
     let mut state = State {
         ignore,
@@ -78,6 +96,28 @@ pub fn run(
         interest,
         workspaces,
     };
+
+    if let Some(cov) = &state.coverage {
+        for (path, traces) in &cov.traces {
+            let path: PathBuf = path.into();
+            let result = state.ignore.matches(state.strip_workspaces(&path));
+            debug!(?result, "ignore result");
+
+            let Ok(content) =
+                std::fs::read(&path).map_err(|e| ProcessError::FailedRead(path.clone(), e))
+            else {
+                continue;
+            };
+
+            let Ok(traces) = result.filter(&content, traces) else {
+                continue;
+            };
+
+            if tx.send(Report::Plain(path, traces)).is_err() {
+                return;
+            }
+        }
+    }
 
     loop {
         let result = select! {
@@ -158,6 +198,9 @@ fn handle_status(
             tracing::debug!("successful coverage found");
             state.generation += 1;
             state.coverage = Coverage::load(&state.package, &state.target).ok();
+            for workspace in &state.workspaces {
+                let _ = cache(&state.package, &state.target, workspace);
+            }
 
             if let Some(cov) = &state.coverage {
                 for (path, traces) in &cov.traces {
@@ -198,6 +241,20 @@ fn handle_status(
             state.interest.clear();
         }
     }
+
+    Ok(())
+}
+
+fn cache(package: &str, target: &Path, workspace: &Path) -> std::io::Result<()> {
+    let mut src = target.to_path_buf();
+    src.push("tarpaulin");
+    src.push(format!("{package}-coverage.json"));
+
+    let mut dst = workspace.to_path_buf();
+    dst.push("target");
+    dst.push(".tarballin-cache.json");
+
+    std::fs::copy(src, dst)?;
 
     Ok(())
 }
